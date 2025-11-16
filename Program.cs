@@ -1,165 +1,159 @@
 ﻿// See https://aka.ms/new-console-template for more information
-using Hexa.NET.GLFW;
 using Hexa.NET.ImGui;
-using Hexa.NET.ImGui.Backends.GLFW;
-using Hexa.NET.ImGui.Backends.OpenGL3;
 using Hexa.NET.ImPlot;
+using Hexa.NET.ImGui.Backends.OpenGL3;
+using Hexa.NET.ImGui.Backends.SDL3;
 using Hexa.NET.OpenGL;
-using HexaGen.Runtime;
-using System.Runtime.CompilerServices;
-using GLFWmonitorPtr = Hexa.NET.GLFW.GLFWmonitorPtr;
-using GLFWwindowPtr = Hexa.NET.GLFW.GLFWwindowPtr;
+using Hexa.NET.SDL3;
+using SDLEvent = Hexa.NET.SDL3.SDLEvent;
+using SDLWindow = Hexa.NET.SDL3.SDLWindow;
 
-NativeCallback<GLFWerrorfun> error;
+SDL.SetHint(SDL.SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
+SDL.Init(SDLInitFlags.Events | SDLInitFlags.Video);
 unsafe
 {
-  error = new(static (errorCode, desciption) =>
+  SDL.GLSetAttribute(SDLGLAttr.ContextFlags, SDL.SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
+  SDL.GLSetAttribute(SDLGLAttr.ContextProfileMask, SDL.SDL_GL_CONTEXT_PROFILE_CORE);
+  SDL.GLSetAttribute(SDLGLAttr.ContextMajorVersion, 3);
+  SDL.GLSetAttribute(SDLGLAttr.ContextMinorVersion, 3);
+
+  // Typical framebuffer attributes
+
+  SDL.GLSetAttribute(SDLGLAttr.DepthSize, 24);
+  SDL.GLSetAttribute(SDLGLAttr.StencilSize, 8);
+
+  SDL.Init(SDLInitFlags.Events | SDLInitFlags.Video);
+
+  float main_scale = SDL.GetDisplayContentScale(SDL.GetPrimaryDisplay());
+
+  var window = SDL.CreateWindow("Test Window", (int)(1280 * main_scale), (int)(720 * main_scale), SDLWindowFlags.Resizable | SDLWindowFlags.Opengl | SDLWindowFlags.HighPixelDensity);
+  var windowId = SDL.GetWindowID(window);
+
+  var guiContext = ImGui.CreateContext();
+  ImGui.SetCurrentContext(guiContext);
+
+  ImPlot.SetImGuiContext(guiContext);
+  var implotContext = ImPlot.CreateContext();
+  ImPlot.SetCurrentContext(implotContext);
+
+  // Setup ImGui config.
+  var io = ImGui.GetIO();
+  io.ConfigFlags |= ImGuiConfigFlags.NavEnableKeyboard;     // Enable Keyboard Controls
+  io.ConfigFlags |= ImGuiConfigFlags.NavEnableGamepad;      // Enable Gamepad Controls
+  io.ConfigFlags |= ImGuiConfigFlags.DockingEnable;         // Enable Docking
+  io.ConfigFlags |= ImGuiConfigFlags.ViewportsEnable;       // Enable Multi-Viewport / Platform Windows
+  io.ConfigViewportsNoAutoMerge = false;
+  io.ConfigViewportsNoTaskBarIcon = false;
+
+  var style = ImGui.GetStyle();
+  style.ScaleAllSizes(main_scale);        // Bake a fixed style scale. (until we have a solution for dynamic style scaling, changing this requires resetting Style + calling this again)
+  style.FontScaleDpi = main_scale;        // Set initial font scale. (using io.ConfigDpiScaleFonts=true makes this unnecessary. We leave both here for documentation purpose)
+  io.ConfigDpiScaleFonts = true;          // [Experimental] Automatically overwrite style.FontScaleDpi in Begin() when Monitor DPI changes. This will scale fonts but _NOT_ scale sizes/padding for now.
+  io.ConfigDpiScaleViewports = true;
+
+  var context = SDL.GLCreateContext(window);
+
+  ImGuiImplSDL3.SetCurrentContext(guiContext);
+  if (!ImGuiImplSDL3.InitForOpenGL(new SDLWindowPtr((Hexa.NET.ImGui.Backends.SDL3.SDLWindow*)window), (void*)context.Handle))
   {
-    Console.WriteLine(Utils.DecodeStringUTF8(desciption));
-  });
-  GLFW.SetErrorCallback(error);
-}
-
-GLFW.Init();
-string glslVersion = "#version 330";
-GLFW.WindowHint(GLFW.GLFW_CONTEXT_VERSION_MAJOR, 3);
-GLFW.WindowHint(GLFW.GLFW_CONTEXT_VERSION_MINOR, 3);
-GLFW.WindowHint(GLFW.GLFW_OPENGL_PROFILE, GLFW.GLFW_OPENGL_CORE_PROFILE);
-
-var mon = GLFW.GetPrimaryMonitor();
-float mainScale = ImGuiImplGLFW.GetContentScaleForMonitor(Unsafe.BitCast<GLFWmonitorPtr, Hexa.NET.ImGui.Backends.GLFW.GLFWmonitorPtr>(mon));
-GLFWwindowPtr window = GLFW.CreateWindow((int)(1280 * mainScale), (int)(800 * mainScale), "GLFW Example", null, null);
-if (window.IsNull)
-{
-  Console.WriteLine("Failed to create GLFW window.");
-  GLFW.Terminate();
-  return;
-}
-
-GLFW.MakeContextCurrent(window);
-
-var guiContext = ImGui.CreateContext();
-ImGui.SetCurrentContext(guiContext);
-
-// Tell ImPlot which ImGui context to use
-ImPlot.SetImGuiContext(guiContext);
-var implotContext = ImPlot.CreateContext();
-ImPlot.SetCurrentContext(implotContext);
-
-// Setup ImGui config.
-var io = ImGui.GetIO();
-io.ConfigFlags |= ImGuiConfigFlags.NavEnableKeyboard;     // Enable Keyboard Controls
-io.ConfigFlags |= ImGuiConfigFlags.NavEnableGamepad;      // Enable Gamepad Controls
-io.ConfigFlags |= ImGuiConfigFlags.DockingEnable;         // Enable Docking
-io.ConfigFlags |= ImGuiConfigFlags.ViewportsEnable;       // Enable Multi-Viewport / Platform Windows
-
-ImGui.StyleColorsDark();
-var style = ImGui.GetStyle();
-style.ScaleAllSizes(mainScale);
-style.FontScaleDpi = mainScale;
-io.ConfigDpiScaleFonts = true;
-io.ConfigDpiScaleViewports = true;
-
-if ((io.ConfigFlags & ImGuiConfigFlags.ViewportsEnable) != 0)
-{
-  style.WindowRounding = 0.0f;
-  style.Colors[(int)ImGuiCol.WindowBg].W = 1.0f;
-}
-
-ImGuiImplGLFW.SetCurrentContext(guiContext);
-
-if (!ImGuiImplGLFW.InitForOpenGL(Unsafe.BitCast<GLFWwindowPtr, Hexa.NET.ImGui.Backends.GLFW.GLFWwindowPtr>(window), true))
-{
-  Console.WriteLine("Failed to init ImGui Impl GLFW");
-  GLFW.Terminate();
-  return;
-}
-
-ImGuiImplOpenGL3.SetCurrentContext(guiContext);
-if (!ImGuiImplOpenGL3.Init(glslVersion))
-{
-  Console.WriteLine("Failed to init ImGui Impl OpenGL3");
-  GLFW.Terminate();
-  return;
-}
-
-GL GL = new(new BindingsContext(window));
-// Main loop
-while (GLFW.WindowShouldClose(window) == 0)
-{
-  // Poll for and process events
-  GLFW.PollEvents();
-
-  if (GLFW.GetWindowAttrib(window, GLFW.GLFW_ICONIFIED) != 0)
-  {
-    ImGuiImplGLFW.Sleep(10);
-    continue;
+    Console.WriteLine("Failed to init ImGui Impl SDL3");
+    SDL.Quit();
+    return;
   }
 
-  GLFW.MakeContextCurrent(window);
-  int width, height;
-  unsafe
+  ImGuiImplOpenGL3.SetCurrentContext(guiContext);
+  if (!ImGuiImplOpenGL3.Init((byte*)null))
   {
-    GLFW.GetWindowSize(window, &width, &height);
-  }
-  //Console.WriteLine($"Window size: {width}x{height}");
-  GL.Viewport(0, 0, width, height);
-  GL.ClearColor(1, 1f, 0.75f, 1);
-  GL.Clear(GLClearBufferMask.ColorBufferBit);
-
-  ImGuiImplOpenGL3.NewFrame();
-  ImGuiImplGLFW.NewFrame();
-  ImGui.NewFrame();
-
-  // ImGui Demo Window
-  ImGui.ShowDemoWindow();
-  ImPlot.ShowDemoWindow();
-
-  ImGui.Render();
-
-  GLFW.MakeContextCurrent(window);
-  ImGuiImplOpenGL3.RenderDrawData(ImGui.GetDrawData());
-
-  if ((io.ConfigFlags & ImGuiConfigFlags.ViewportsEnable) != 0)
-  {
-    ImGui.UpdatePlatformWindows();
-    ImGui.RenderPlatformWindowsDefault();
+    Console.WriteLine("Failed to init ImGui Impl OpenGL3");
+    SDL.Quit();
+    return;
   }
 
-  GLFW.MakeContextCurrent(window);
+  GL GL = new(new BindingsContext(window, context));
 
-  // Swap front and back buffers (double buffering)
-  GLFW.SwapBuffers(window);
+  SDLEvent sdlEvent = default;
+  bool exiting = false;
+  while (!exiting)
+  {
+    SDL.PumpEvents();
+
+    while (SDL.PollEvent(ref sdlEvent))
+    {
+      ImGuiImplSDL3.ProcessEvent((Hexa.NET.ImGui.Backends.SDL3.SDLEvent*)&sdlEvent);
+
+      switch ((SDLEventType)sdlEvent.Type)
+      {
+        case SDLEventType.Quit:
+          exiting = true;
+          break;
+
+        case SDLEventType.Terminating:
+          exiting = true;
+          break;
+
+        case SDLEventType.WindowCloseRequested:
+          var windowEvent = sdlEvent.Window;
+          if (windowEvent.WindowID == windowId)
+          {
+            exiting = true;
+          }
+          break;
+      }
+    }
+    GL.MakeCurrent();
+    GL.ClearColor(1, 0.8f, 0.75f, 1);
+    GL.Clear(GLClearBufferMask.ColorBufferBit);
+
+
+    ImGuiImplOpenGL3.NewFrame();
+    ImGuiImplSDL3.NewFrame();
+    ImGui.NewFrame();
+
+    ImGui.ShowDemoWindow();
+    ImPlot.ShowDemoWindow();
+
+    ImGui.Render();
+    ImGui.EndFrame();
+
+    GL.MakeCurrent();
+    ImGuiImplOpenGL3.RenderDrawData(ImGui.GetDrawData());
+
+    if ((io.ConfigFlags & ImGuiConfigFlags.ViewportsEnable) != 0)
+    {
+      ImGui.UpdatePlatformWindows();
+      ImGui.RenderPlatformWindowsDefault();
+    }
+
+    GL.MakeCurrent();
+
+    // Swap front and back buffers (double buffering)
+    GL.SwapBuffers();
+  }
+
+  ImGuiImplOpenGL3.Shutdown();
+  ImGuiImplSDL3.Shutdown();
+  ImPlot.DestroyContext();
+  ImGui.DestroyContext();
+  GL.Dispose();
+
+  SDL.DestroyWindow(window);
+  SDL.Quit();
 }
-
-ImGuiImplOpenGL3.Shutdown();
-ImGuiImplOpenGL3.SetCurrentContext(null);
-ImGuiImplGLFW.Shutdown();
-ImGuiImplGLFW.SetCurrentContext(null);
-
-// Cleanup ImPlot contexts
-//ImPlot.DestroyContext(implotContext);
-//ImPlot3D.DestroyContext(implot3DContext);
-
-ImGui.DestroyContext();
-GL.Dispose();
-
-// Clean up and terminate GLFW
-GLFW.DestroyWindow(window);
-GLFW.Terminate();
 
 internal unsafe class BindingsContext : HexaGen.Runtime.IGLContext
 {
-  private GLFWwindowPtr window;
+  private readonly SDLWindow* window;
+  private readonly SDLGLContext context;
 
-  public BindingsContext(GLFWwindowPtr window)
+  public BindingsContext(SDLWindow* window, SDLGLContext context)
   {
     this.window = window;
+    this.context = context;
   }
 
-  public nint Handle => (nint)window.Handle;
+  public nint Handle => (nint)window;
 
-  public bool IsCurrent => GLFW.GetCurrentContext() == window;
+  public bool IsCurrent => SDL.GLGetCurrentContext() == context;
 
   public void Dispose()
   {
@@ -167,32 +161,32 @@ internal unsafe class BindingsContext : HexaGen.Runtime.IGLContext
 
   public nint GetProcAddress(string procName)
   {
-    return (nint)GLFW.GetProcAddress(procName);
+    return (nint)SDL.GLGetProcAddress(procName);
   }
 
   public bool IsExtensionSupported(string extensionName)
   {
-    return GLFW.ExtensionSupported(extensionName) != 0;
+    return SDL.GLExtensionSupported(extensionName);
   }
 
   public void MakeCurrent()
   {
-    GLFW.MakeContextCurrent(window);
+    SDL.GLMakeCurrent(window, context);
   }
 
   public void SwapBuffers()
   {
-    GLFW.SwapBuffers(window);
+    SDL.GLSwapWindow(window);
   }
 
   public void SwapInterval(int interval)
   {
-    GLFW.SwapInterval(interval);
+    SDL.GLSetSwapInterval(interval);
   }
 
   public bool TryGetProcAddress(string procName, out nint procAddress)
   {
-    procAddress = (nint)GLFW.GetProcAddress(procName);
+    procAddress = (nint)SDL.GLGetProcAddress(procName);
     return procAddress != 0;
   }
 }
